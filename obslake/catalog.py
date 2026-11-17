@@ -28,23 +28,36 @@ class Catalog:
 
     def initialize(self):
         version = self.db.execute('PRAGMA user_version').fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             raise ValueError('unsupported catalog schema')
-        if version == 1:
+        if version == 2:
             return
-        if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
-            raise ValueError('unversioned nonempty catalog')
+        if version == 0:
+            if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
+                raise ValueError('unversioned nonempty catalog')
+            with self.transaction():
+                self.db.execute('CREATE TABLE batches(id TEXT PRIMARY KEY, request TEXT UNIQUE NOT NULL, identity TEXT NOT NULL, row_count INTEGER NOT NULL, manifest TEXT NOT NULL)')
+                self.db.execute('CREATE TABLE snapshots(id TEXT PRIMARY KEY, parent TEXT REFERENCES snapshots(id), body TEXT NOT NULL)')
+                self.db.execute('CREATE TABLE current_head(singleton INTEGER PRIMARY KEY CHECK(singleton=1), snapshot_id TEXT NOT NULL REFERENCES snapshots(id))')
+                self.db.execute('CREATE TABLE receipts(namespace TEXT NOT NULL, request TEXT NOT NULL, identity TEXT NOT NULL, response TEXT NOT NULL, PRIMARY KEY(namespace,request))')
+                self.db.execute("CREATE TABLE jobs(id TEXT PRIMARY KEY, definition TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','failed','complete')), result_id TEXT REFERENCES results(id), error TEXT)")
+                self.db.execute("CREATE TABLE results(id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('delivery','reconciliation')), payload TEXT NOT NULL)")
+                self.db.execute('CREATE TABLE offline(digest TEXT PRIMARY KEY)')
+                self.create_partition_tables()
+                self.db.execute("INSERT INTO snapshots VALUES('s-empty',NULL,?)", ('{"batches":[],"files":[],"id":"s-empty","parent":null,"specs":{}}',))
+                self.db.execute("INSERT INTO current_head VALUES(1,'s-empty')")
+                self.db.execute('PRAGMA user_version=2')
+            return
+        # A version 1 catalog keeps its snapshots byte-identical; only the
+        # partition registry is added.
         with self.transaction():
-            self.db.execute('CREATE TABLE batches(id TEXT PRIMARY KEY, request TEXT UNIQUE NOT NULL, identity TEXT NOT NULL, row_count INTEGER NOT NULL, manifest TEXT NOT NULL)')
-            self.db.execute('CREATE TABLE snapshots(id TEXT PRIMARY KEY, parent TEXT REFERENCES snapshots(id), body TEXT NOT NULL)')
-            self.db.execute('CREATE TABLE current_head(singleton INTEGER PRIMARY KEY CHECK(singleton=1), snapshot_id TEXT NOT NULL REFERENCES snapshots(id))')
-            self.db.execute('CREATE TABLE receipts(namespace TEXT NOT NULL, request TEXT NOT NULL, identity TEXT NOT NULL, response TEXT NOT NULL, PRIMARY KEY(namespace,request))')
-            self.db.execute("CREATE TABLE jobs(id TEXT PRIMARY KEY, definition TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','failed','complete')), result_id TEXT REFERENCES results(id), error TEXT)")
-            self.db.execute("CREATE TABLE results(id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('delivery','reconciliation')), payload TEXT NOT NULL)")
-            self.db.execute('CREATE TABLE offline(digest TEXT PRIMARY KEY)')
-            self.db.execute("INSERT INTO snapshots VALUES('s-empty',NULL,?)", ('{"batches":[],"files":[],"id":"s-empty","parent":null}',))
-            self.db.execute("INSERT INTO current_head VALUES(1,'s-empty')")
-            self.db.execute('PRAGMA user_version=1')
+            self.create_partition_tables()
+            self.db.execute('PRAGMA user_version=2')
+
+    def create_partition_tables(self):
+        self.db.execute('CREATE TABLE partition_specs(spec_id TEXT PRIMARY KEY, body TEXT NOT NULL UNIQUE)')
+        self.db.execute('CREATE TABLE write_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1), spec_id TEXT REFERENCES partition_specs(spec_id))')
+        self.db.execute('INSERT INTO write_state VALUES(1,NULL)')
 
     @contextmanager
     def transaction(self):

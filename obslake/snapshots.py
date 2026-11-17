@@ -17,14 +17,29 @@ class SnapshotStore:
             raise NotFound(snapshot_id)
         return json.loads(row[0])
 
+    def spec_map(self, files):
+        """Complete ordered copies of every spec referenced by the files."""
+        specs = {}
+        for item in files:
+            sid = item.get('spec_id')
+            if sid is None or sid in specs:
+                continue
+            row = self.catalog.db.execute('SELECT body FROM partition_specs WHERE spec_id=?', (sid,)).fetchone()
+            if row is None:
+                raise ValueError('snapshot references unregistered spec')
+            specs[sid] = json.loads(row[0])
+        return specs
+
     def plan_append(self, prepared, files):
         parent = self.snapshot()
         batch_id = prepared.identity.batch_id
         identity = canonical([parent['id'], batch_id])
         snapshot_id = 's-' + hashlib.sha256(identity.encode()).hexdigest()
-        return dict(id=snapshot_id, parent=parent['id'],
+        merged = parent['files'] + [item.as_dict() for item in files]
+        plan = dict(id=snapshot_id, parent=parent['id'],
                     batches=parent['batches'] + [dict(batch_id=batch_id, row_count=len(prepared.rows))],
-                    files=parent['files'] + [item.as_dict() for item in files])
+                    files=merged, specs=self.spec_map(merged))
+        return plan
 
     def insert_snapshot(self, plan):
         if not self.catalog.db.in_transaction:

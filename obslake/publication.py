@@ -2,8 +2,8 @@ from .acceptance import check_replay
 from .file_builder import verify_manifest
 from .row_codec import canonical
 
-def publish_batch(catalog, snapshots, receipts, prepared, files):
-    verify_manifest(prepared, files)
+def publish_batch(catalog, snapshots, receipts, prepared, files, spec=None):
+    verify_manifest(prepared, files, spec)
     with catalog.transaction():
         replay = check_replay(receipts, prepared)
         if replay is not None:

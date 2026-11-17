@@ -303,22 +303,40 @@ class MixedPartitions(unittest.TestCase):
         self.assertEqual(len(self.lake.read_result(self.lake.run_query(job))["payload"]["rows"]), 2)
 
 
-def main():
+def demo_tests():
+    return unittest.TestSuite(MixedPartitions(name) for name in (
+        "test_cold_file_and_reopen", "test_mixed_snapshot_fixed_query_and_accounting"))
+
+
+def run_verify():
+    suite = unittest.defaultTestLoader.discover("tests", top_level_dir=".")
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(MixedPartitions))
+    return unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
+
+
+def run_demo():
     global DEMO
+    DEMO = True
+    ok = unittest.TextTestRunner(verbosity=2).run(demo_tests()).wasSuccessful()
+    from run import mixed_demo
+    temporary = tempfile.TemporaryDirectory()
+    try:
+        mixed_demo(Path(temporary.name) / 'mixed-demo')
+    finally:
+        temporary.cleanup()
+    return ok
+
+
+def main():
     mode = sys.argv[1] if len(sys.argv) == 2 else ""
     if mode == "oracle":
         oracle_selfcheck()
         return 0
     if mode == "verify":
-        suite = unittest.defaultTestLoader.discover("tests", top_level_dir=".")
-        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(MixedPartitions))
-    elif mode == "demo":
-        DEMO = True
-        suite = unittest.TestSuite(MixedPartitions(name) for name in (
-            "test_cold_file_and_reopen", "test_mixed_snapshot_fixed_query_and_accounting"))
-    else:
-        raise SystemExit("usage: partition_examples.py oracle|verify|demo")
-    return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
+        return 0 if run_verify() else 1
+    if mode == "demo":
+        return 0 if run_demo() else 1
+    raise SystemExit("usage: partition_examples.py oracle|verify|demo")
 
 
 if __name__ == "__main__":

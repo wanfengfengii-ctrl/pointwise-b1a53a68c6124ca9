@@ -22,14 +22,19 @@ def account_sources(snapshot, definition, objects):
     reasons = dict(null_time=0, outside_day=0, predicate_false=0, predicate_unknown=0, selected=0)
     selected, groups, source_count = [], {}, 0
     for batch in snapshot['batches']:
-        rows, days, ids = {}, set(), set()
+        rows, partitions, ids = {}, set(), set()
         for item in snapshot['files']:
             if item['batch_id'] != batch['batch_id']:
                 continue
-            if item['day'] in days:
-                raise Unavailable('duplicate day file')
-            days.add(item['day'])
-            for row in read_manifest_file(item, batch, objects):
+            if item.get('spec_id') is None:
+                key = ('day', item.get('day'))
+            else:
+                published = item.get('partition')
+                key = (item['spec_id'], repr(published))
+            if key in partitions:
+                raise Unavailable('duplicate partition file')
+            partitions.add(key)
+            for row in read_manifest_file(item, batch, objects, snapshot):
                 if row.ordinal in rows or row.observation.id in ids:
                     raise Unavailable('duplicate batch source')
                 rows[row.ordinal] = row
@@ -60,6 +65,9 @@ def account_sources(snapshot, definition, objects):
     known = {batch['batch_id'] for batch in snapshot['batches']}
     if any(item['batch_id'] not in known for item in snapshot['files']):
         raise Unavailable('orphan snapshot file')
+    referenced = {item['spec_id'] for item in snapshot['files'] if item.get('spec_id') is not None}
+    if not referenced <= set(snapshot.get('specs') or {}):
+        raise Unavailable('snapshot omits a referenced spec')
     ordered = tuple(groups[key] for key in sorted(groups, key=lambda key: (key is not None, 0 if key is None else key)))
     nonnull = sum(state['amount_count'] for state in ordered)
     if source_count != sum(reasons.values()):
