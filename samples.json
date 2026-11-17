@@ -1,0 +1,14 @@
+{
+  "A": [
+    {"id":"a01","time":-1,"device":7,"amount":2},
+    {"id":"a02","time":0,"device":7,"amount":null},
+    {"id":"a03","time":1,"device":7,"amount":5},
+    {"id":"a04","time":86399,"device":7,"amount":-5},
+    {"id":"a05","time":2,"device":null,"amount":null},
+    {"id":"a06","time":3,"device":9,"amount":null},
+    {"id":"a07","time":86400,"device":7,"amount":100},
+    {"id":"a08","time":null,"device":7,"amount":11},
+    {"id":"a09","time":4,"device":null,"amount":99}
+  ],
+  "B": [{"id":"b01","time":5,"device":7,"amount":1000}]
+}

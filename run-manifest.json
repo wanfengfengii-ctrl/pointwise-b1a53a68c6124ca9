@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "sample": "samples.json",
+  "requests": {
+    "batch_a": "sample-A",
+    "batch_b": "sample-B",
+    "query": "sample-query",
+    "export": "sample-export",
+    "reconcile": "sample-reconcile"
+  },
+  "export": "delivery.json"
+}
